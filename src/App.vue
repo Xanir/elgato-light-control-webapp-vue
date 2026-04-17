@@ -1,7 +1,7 @@
 <script setup>
 import { computed, onMounted, ref } from 'vue'
 
-const API_BASE = 'http://esp32-elgato-lights.local/lights'
+const API_BASE = '/api/lights'
 
 const lights = ref([])
 const groups = ref([])

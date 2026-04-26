@@ -1,32 +1,52 @@
-<script setup>
+<script setup lang="ts">
 import { computed, onMounted, ref } from 'vue'
+import TargetSwitcher from './components/TargetSwitcher.vue'
+
+type TargetType = 'lights' | 'groups'
+
+interface Light {
+  serialNumber: string
+  displayName?: string
+  ip: string
+}
+
+interface Group {
+  groupName: string
+  deviceCount: number
+}
+
+interface LightSettings {
+  brightness: number
+  temperature: number
+}
+
+interface UpdatePayload {
+  light: LightSettings
+  serialNumber?: string
+  group?: string
+}
 
 const API_BASE = '/api/lights'
 
-const lights = ref([])
-const groups = ref([])
-const activeType = ref('lights')
-const selectedLightSerial = ref('')
-const selectedGroupName = ref('')
-const brightness = ref(70)
-const temperature = ref(260)
-const isLoading = ref(true)
-const errorMessage = ref('')
-const submitStatus = ref('')
+const lights = ref<Light[]>([])
+const groups = ref<Group[]>([])
+const activeType = ref<TargetType>('lights')
+const selectedLightSerial = ref<string>('')
+const selectedGroupName = ref<string>('')
+const brightness = ref<number>(70)
+const temperature = ref<number>(260)
+const isLoading = ref<boolean>(true)
+const errorMessage = ref<string>('')
+const submitStatus = ref<string>('')
 
-const secondaryType = computed(() => (activeType.value === 'lights' ? 'groups' : 'lights'))
-
-const selectedLight = computed(() =>
+const selectedLight = computed<Light | undefined>(() =>
   lights.value.find((light) => light.serialNumber === selectedLightSerial.value),
 )
-const selectedGroup = computed(() =>
+const selectedGroup = computed<Group | undefined>(() =>
   groups.value.find((group) => group.groupName === selectedGroupName.value),
 )
 
-const primaryItems = computed(() => (activeType.value === 'lights' ? lights.value : groups.value))
-const secondaryItems = computed(() => (secondaryType.value === 'lights' ? lights.value : groups.value))
-
-const selectedTargetName = computed(() => {
+const selectedTargetName = computed<string>(() => {
   if (activeType.value === 'lights') {
     return selectedLight.value ? getLightLabel(selectedLight.value) : 'No light selected'
   }
@@ -34,27 +54,27 @@ const selectedTargetName = computed(() => {
   return selectedGroup.value ? selectedGroup.value.groupName : 'No group selected'
 })
 
-const canSubmit = computed(() => {
+const canSubmit = computed<boolean>(() => {
   return activeType.value === 'lights' ? Boolean(selectedLight.value) : Boolean(selectedGroup.value)
 })
 
-function getLightLabel(light) {
+function getLightLabel(light: Light): string {
   return light.displayName?.trim() ? light.displayName : light.ip
 }
 
-function selectLight(light) {
+function selectLight(light: Light): void {
   activeType.value = 'lights'
   selectedLightSerial.value = light.serialNumber
   submitStatus.value = ''
 }
 
-function selectGroup(group) {
+function selectGroup(group: Group): void {
   activeType.value = 'groups'
   selectedGroupName.value = group.groupName
   submitStatus.value = ''
 }
 
-function ensureSelection() {
+function ensureSelection(): void {
   if (!selectedLightSerial.value && lights.value.length > 0) {
     selectedLightSerial.value = lights.value[0].serialNumber
   }
@@ -72,7 +92,7 @@ function ensureSelection() {
   }
 }
 
-async function loadData() {
+async function loadData(): Promise<void> {
   isLoading.value = true
   errorMessage.value = ''
 
@@ -86,11 +106,14 @@ async function loadData() {
       throw new Error('Unable to load lights and groups.')
     }
 
-    const lightsPayload = await lightsResponse.json()
-    const groupsPayload = await groupsResponse.json()
+    const lightsPayload: unknown = await lightsResponse.json()
+    const groupsPayload: unknown = await groupsResponse.json()
 
-    lights.value = Array.isArray(lightsPayload) ? lightsPayload : []
-    groups.value = Array.isArray(groupsPayload?.groups) ? groupsPayload.groups : []
+    lights.value = Array.isArray(lightsPayload) ? (lightsPayload as Light[]) : []
+    groups.value =
+      Array.isArray((groupsPayload as { groups?: unknown })?.groups)
+        ? ((groupsPayload as { groups: Group[] }).groups)
+        : []
 
     ensureSelection()
   } catch (error) {
@@ -100,12 +123,12 @@ async function loadData() {
   }
 }
 
-async function submitLightUpdate() {
+async function submitLightUpdate(): Promise<void> {
   if (!canSubmit.value) {
     return
   }
 
-  const payload = {
+  const payload: UpdatePayload = {
     light: {
       brightness: Number(brightness.value),
       temperature: Number(temperature.value),
@@ -113,9 +136,9 @@ async function submitLightUpdate() {
   }
 
   if (activeType.value === 'lights') {
-    payload.serialNumber = selectedLight.value.serialNumber
+    payload.serialNumber = selectedLight.value!.serialNumber
   } else {
-    payload.group = selectedGroup.value.groupName
+    payload.group = selectedGroup.value!.groupName
   }
 
   submitStatus.value = ''
@@ -146,80 +169,35 @@ onMounted(loadData)
   <main class="app-shell">
     <h1>Elgato Light Control</h1>
 
-    <section class="panel" data-testid="target-switcher">
-      <h2>Select target type</h2>
-      <div class="button-row">
-        <button
-          type="button"
-          data-testid="switch-lights"
-          :class="{ active: activeType === 'lights' }"
-          @click="activeType = 'lights'"
-        >
-          Lights
-        </button>
-        <button
-          type="button"
-          data-testid="switch-groups"
-          :class="{ active: activeType === 'groups' }"
-          @click="activeType = 'groups'"
-        >
-          Groups
-        </button>
-      </div>
-    </section>
+    <TargetSwitcher v-model="activeType" />
 
     <section class="panel list-panel">
       <h2>{{ activeType === 'lights' ? 'Lights' : 'Groups' }}</h2>
       <p v-if="isLoading">Loading...</p>
       <p v-else-if="errorMessage" class="error">{{ errorMessage }}</p>
-      <ul v-else class="list">
-        <li v-for="item in primaryItems" :key="activeType === 'lights' ? item.serialNumber : item.groupName">
-          <button
-            v-if="activeType === 'lights'"
-            type="button"
-            data-testid="light-item"
-            :class="{ active: selectedLightSerial === item.serialNumber }"
-            @click="selectLight(item)"
-          >
-            {{ getLightLabel(item) }}
-          </button>
-          <button
-            v-else
-            type="button"
-            data-testid="group-item"
-            :class="{ active: selectedGroupName === item.groupName }"
-            @click="selectGroup(item)"
-          >
-            {{ item.groupName }} ({{ item.deviceCount }})
-          </button>
-        </li>
-      </ul>
-    </section>
-
-    <section class="panel list-panel" data-testid="secondary-list">
-      <h2>{{ secondaryType === 'lights' ? 'Lights' : 'Groups' }}</h2>
       <ul class="list" v-if="!isLoading && !errorMessage">
-        <li
-          v-for="item in secondaryItems"
-          :key="secondaryType === 'lights' ? item.serialNumber : item.groupName"
-        >
-          <button
-            v-if="secondaryType === 'lights'"
-            type="button"
-            data-testid="secondary-light-item"
-            @click="selectLight(item)"
-          >
-            {{ getLightLabel(item) }}
-          </button>
-          <button
-            v-else
-            type="button"
-            data-testid="secondary-group-item"
-            @click="selectGroup(item)"
-          >
-            {{ item.groupName }} ({{ item.deviceCount }})
-          </button>
-        </li>
+        <template v-if="activeType === 'lights'">
+          <li v-for="light in lights" :key="light.serialNumber">
+            <button
+              type="button"
+              data-testid="secondary-light-item"
+              @click="selectLight(light)"
+            >
+              {{ getLightLabel(light) }}
+            </button>
+          </li>
+        </template>
+        <template v-else>
+          <li v-for="group in groups" :key="group.groupName">
+            <button
+              type="button"
+              data-testid="secondary-group-item"
+              @click="selectGroup(group)"
+            >
+              {{ group.groupName }} ({{ group.deviceCount }})
+            </button>
+          </li>
+        </template>
       </ul>
     </section>
 
@@ -275,11 +253,6 @@ h1 {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.5rem;
-}
-
-.button-row {
-  display: flex;
   gap: 0.5rem;
 }
 

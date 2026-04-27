@@ -181,6 +181,7 @@ onMounted(loadData)
             <button
               type="button"
               data-testid="secondary-light-item"
+              :class="{ active: light.serialNumber === selectedLightSerial }"
               @click="selectLight(light)"
             >
               {{ getLightLabel(light) }}
@@ -192,6 +193,7 @@ onMounted(loadData)
             <button
               type="button"
               data-testid="secondary-group-item"
+              :class="{ active: group.groupName === selectedGroupName }"
               @click="selectGroup(group)"
             >
               {{ group.groupName }} ({{ group.deviceCount }})
